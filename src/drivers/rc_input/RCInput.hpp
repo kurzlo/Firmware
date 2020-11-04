@@ -56,13 +56,23 @@
 #include <uORB/topics/input_rc.h>
 #include <uORB/topics/vehicle_command.h>
 
+#ifndef PX4IO_ENABLE_RSSI_PWM
+#	include <px4_platform_common/module_params.h>
+#	include <uORB/topics/parameter_update.h>
+#endif
+
 #include "crsf_telemetry.h"
 
 #ifdef HRT_PPM_CHANNEL
 # include <systemlib/ppm_decode.h>
 #endif
 
-class RCInput : public ModuleBase<RCInput>, public px4::ScheduledWorkItem
+class RCInput :
+	public ModuleBase<RCInput>,
+#ifndef PX4IO_ENABLE_RSSI_PWM
+	public ModuleParams,
+#endif
+	public px4::ScheduledWorkItem
 {
 public:
 
@@ -145,4 +155,18 @@ private:
 
 	void rc_io_invert(bool invert);
 
+#ifndef PX4IO_ENABLE_RSSI_PWM
+
+	void parameters_update(int parameter_update_sub, bool force = false);
+	int _parameter_update_sub{-1};
+
+	DEFINE_PARAMETERS(
+		(ParamInt<px4::params::RC_RSSI_PWM_CHAN>) _rssi_pwm_chan,
+		(ParamInt<px4::params::RC_RSSI_PWM_MAX>) _rssi_pwm_max,
+		(ParamInt<px4::params::RC_RSSI_PWM_MIN>) _rssi_pwm_min
+	)
+	unsigned _uorb_update_interval{4000000};
+	hrt_abstime _uorb_last_update {0};
+
+#endif /* !PX4IO_ENABLE_RSSI_PWM */
 };

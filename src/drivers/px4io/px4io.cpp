@@ -264,9 +264,11 @@ private:
 	bool			_cb_flighttermination;	///< true if the flight termination circuit breaker is enabled
 	bool 			_in_esc_calibration_mode;	///< do not send control outputs to IO (used for esc calibration)
 
+#ifdef PX4IO_ENABLE_RSSI_PWM
 	int32_t			_rssi_pwm_chan; ///< RSSI PWM input channel
 	int32_t			_rssi_pwm_max; ///< max RSSI input on PWM channel
 	int32_t			_rssi_pwm_min; ///< min RSSI input on PWM channel
+#endif
 	int32_t			_thermal_control; ///< thermal control state
 	bool			_analog_rc_rssi_stable; ///< true when analog RSSI input is stable
 	float			_analog_rc_rssi_volt; ///< analog RSSI voltage
@@ -457,9 +459,11 @@ PX4IO::PX4IO(device::Device *interface) :
 	_override_available(false),
 	_cb_flighttermination(true),
 	_in_esc_calibration_mode(false),
+#ifdef PX4IO_ENABLE_RSSI_PWM
 	_rssi_pwm_chan(0),
 	_rssi_pwm_max(0),
 	_rssi_pwm_min(0),
+#endif
 	_thermal_control(-1),
 	_analog_rc_rssi_stable(false),
 	_analog_rc_rssi_volt(-1.0f),
@@ -620,10 +624,11 @@ PX4IO::init()
 		_max_rc_input = input_rc_s::RC_INPUT_MAX_CHANNELS;
 	}
 
+#ifdef PX4IO_ENABLE_RSSI_PWM
 	param_get(param_find("RC_RSSI_PWM_CHAN"), &_rssi_pwm_chan);
 	param_get(param_find("RC_RSSI_PWM_MAX"), &_rssi_pwm_max);
 	param_get(param_find("RC_RSSI_PWM_MIN"), &_rssi_pwm_min);
-
+#endif
 	/*
 	 * Check for IO flight state - if FMU was flagged to be in
 	 * armed state, FMU is recovering from an in-air reset.
@@ -1011,9 +1016,11 @@ PX4IO::task_main()
 				/* Tell IO that it can terminate the flight if FMU is not responding or if a failure has been reported by the FailureDetector logic */
 				(void)io_reg_set(PX4IO_PAGE_SETUP, PX4IO_P_SETUP_ENABLE_FLIGHTTERMINATION, !_cb_flighttermination);
 
+#ifdef PX4IO_ENABLE_RSSI_PWM
 				param_get(param_find("RC_RSSI_PWM_CHAN"), &_rssi_pwm_chan);
 				param_get(param_find("RC_RSSI_PWM_MAX"), &_rssi_pwm_max);
 				param_get(param_find("RC_RSSI_PWM_MIN"), &_rssi_pwm_min);
+#endif
 
 				param_t thermal_param = param_find("SENS_EN_THERMAL");
 
@@ -1879,6 +1886,7 @@ PX4IO::io_get_raw_rc_input(input_rc_s &input_rc)
 		input_rc.values[i] = 0;
 	}
 
+#ifdef PX4IO_ENABLE_RSSI_PWM
 	/* get RSSI from input channel */
 	if (_rssi_pwm_chan > 0 && _rssi_pwm_chan <= input_rc_s::RC_INPUT_MAX_CHANNELS && _rssi_pwm_max - _rssi_pwm_min != 0) {
 		int rssi = ((input_rc.values[_rssi_pwm_chan - 1] - _rssi_pwm_min) * 100) /
@@ -1887,6 +1895,7 @@ PX4IO::io_get_raw_rc_input(input_rc_s &input_rc)
 		rssi = rssi < 0 ? 0 : rssi;
 		input_rc.rssi = rssi;
 	}
+#endif
 
 	return ret;
 }
@@ -2312,7 +2321,9 @@ PX4IO::print_status(bool extended_status)
 	printf("features 0x%04hx%s%s%s%s\n", features,
 	       ((features & PX4IO_P_SETUP_FEATURES_SBUS1_OUT) ? " S.BUS1_OUT" : ""),
 	       ((features & PX4IO_P_SETUP_FEATURES_SBUS2_OUT) ? " S.BUS2_OUT" : ""),
+#ifdef PX4IO_ENABLE_RSSI_PWM
 	       ((features & PX4IO_P_SETUP_FEATURES_PWM_RSSI) ? " RSSI_PWM" : ""),
+#endif
 	       ((features & PX4IO_P_SETUP_FEATURES_ADC_RSSI) ? " RSSI_ADC" : "")
 	      );
 
@@ -2825,6 +2836,7 @@ PX4IO::ioctl(file *filep, int cmd, unsigned long arg)
 
 		break;
 
+#ifdef PX4IO_ENABLE_RSSI_PWM
 	case RC_INPUT_ENABLE_RSSI_PWM:
 
 		if (arg) {
@@ -2835,6 +2847,7 @@ PX4IO::ioctl(file *filep, int cmd, unsigned long arg)
 		}
 
 		break;
+#endif
 
 	case SBUS_SET_PROTO_VERSION:
 
@@ -3442,6 +3455,7 @@ px4io_main(int argc, char *argv[])
 		exit(0);
 	}
 
+#ifdef PX4IO_ENABLE_RSSI_PWM
 	if (!strcmp(argv[1], "rssi_pwm")) {
 		/* we can cheat and call the driver directly, as it
 		 * doesn't reference filp in ioctl()
@@ -3454,6 +3468,7 @@ px4io_main(int argc, char *argv[])
 
 		exit(0);
 	}
+#endif
 
 	if (!strcmp(argv[1], "test_fmu_fail")) {
 		if (g_dev != nullptr) {

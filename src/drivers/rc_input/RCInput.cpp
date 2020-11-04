@@ -44,6 +44,9 @@ static bool bind_spektrum(int arg = DSMX8_BIND_PULSES);
 constexpr char const *RCInput::RC_SCAN_STRING[];
 
 RCInput::RCInput(const char *device) :
+#ifndef PX4IO_ENABLE_RSSI_PWM
+	ModuleParams(nullptr),
+#endif
 	ScheduledWorkItem(MODULE_NAME, px4::serial_port_to_wq(device)),
 	_cycle_perf(perf_alloc(PC_ELAPSED, MODULE_NAME": cycle time")),
 	_publish_interval_perf(perf_alloc(PC_INTERVAL, MODULE_NAME": publish interval"))
@@ -67,6 +70,10 @@ RCInput::RCInput(const char *device) :
 
 RCInput::~RCInput()
 {
+#ifndef PX4IO_ENABLE_RSSI_PWM
+	if (_parameter_update_sub != -1)
+		orb_unsubscribe(_parameter_update_sub);
+#endif
 	dsm_deinit();
 
 	delete _crsf_telemetry;
@@ -105,6 +112,10 @@ RCInput::init()
 	// disable CPPM input by mapping it away from the timer capture input
 	px4_arch_unconfiggpio(GPIO_PPM_IN);
 #endif // GPIO_PPM_IN
+#ifndef PX4IO_ENABLE_RSSI_PWM
+	_parameter_update_sub =  orb_subscribe(ORB_ID(parameter_update));
+	_uorb_last_update = hrt_absolute_time();
+#endif
 
 	return 0;
 }
@@ -193,6 +204,27 @@ RCInput::fill_rc_in(uint16_t raw_rc_count_local,
 	_rc_in.timestamp_last_signal = _rc_in.timestamp;
 	_rc_in.rc_ppm_frame_length = 0;
 
+#ifndef PX4IO_ENABLE_RSSI_PWM
+	/* overwrite rssi if RSSI_PWM feature enabled */
+	if (
+		   (valid_chans != 0)
+		&& (_rssi_pwm_chan.get() > 0) && (_rssi_pwm_chan.get() <= input_rc_s::RC_INPUT_MAX_CHANNELS)
+		&& (_rssi_pwm_max.get() > _rssi_pwm_min.get()))
+	{
+		/* map rc channel if defined */
+		int channel_index = _rssi_pwm_chan.get() - 1;
+		int rssi_pwm = (((int)_rc_in.values[channel_index] - _rssi_pwm_min.get()) * 100) / (_rssi_pwm_max.get() - _rssi_pwm_min.get());
+		if (rssi_pwm < 0)
+			rssi_pwm = 0;
+		else if (rssi_pwm > 100)
+			rssi_pwm = 100;
+
+		_rc_in.rssi = rssi_pwm;
+
+	}
+	else
+#endif /* !PX4IO_ENABLE_RSSI_PWM */
+
 	/* fake rssi if no value was provided */
 	if (rssi == -1) {
 
@@ -267,6 +299,14 @@ void RCInput::Run()
 		perf_begin(_cycle_perf);
 
 		const hrt_abstime cycle_timestamp = hrt_absolute_time();
+
+#ifndef PX4IO_ENABLE_RSSI_PWM
+		if ((cycle_timestamp - _uorb_last_update) > _uorb_update_interval)
+		{
+			parameters_update(_parameter_update_sub);
+			_uorb_last_update = cycle_timestamp;
+		}
+#endif
 
 #if defined(SPEKTRUM_POWER)
 		/* vehicle command */
@@ -685,6 +725,10 @@ int RCInput::print_status()
 	PX4_INFO("CRSF Telemetry: %s", _crsf_telemetry ? "yes" : "no");
 	PX4_INFO("SBUS frame drops: %u", sbus_dropped_frames());
 
+#ifndef PX4IO_ENABLE_RSSI_PWM
+	PX4_INFO("RSSI channel: %u (min %u, max %u)", _rssi_pwm_chan.get(), _rssi_pwm_min.get(), _rssi_pwm_max.get());
+#endif
+
 #if ADC_RC_RSSI_CHANNEL
 	PX4_INFO("vrssi: %dmV", (int)(_analog_rc_rssi_volt * 1000.0f));
 #endif
@@ -731,6 +775,28 @@ This module does the RC input parsing and auto-selecting the method. Supported m
 
 	return 0;
 }
+
+#ifndef PX4IO_ENABLE_RSSI_PWM
+void RCInput::parameters_update(int parameter_update_sub, bool force)
+{
+	bool updated;
+	struct parameter_update_s param_upd;
+
+	// Check if any parameter updated
+	orb_check(_parameter_update_sub, &updated);
+
+	// If any parameter updated copy it to: param_upd
+	if (updated) {
+		orb_copy(ORB_ID(parameter_update), _parameter_update_sub, &param_upd);
+	}
+
+	if (force || updated) {
+		// If any parameter updated, call updateParams() to check if
+		// this class attributes need updating (and do so). 
+		updateParams();
+	}
+}
+#endif /* PX4IO_ENABLE_RSSI_PWM */
 
 extern "C" __EXPORT int rc_input_main(int argc, char *argv[])
 {

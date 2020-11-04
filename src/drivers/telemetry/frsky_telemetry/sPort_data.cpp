@@ -50,7 +50,8 @@
 #include <math.h>
 
 #include <lib/ecl/geo/geo.h>
-
+#include <lib/matrix/matrix/Quaternion.hpp>
+#include <lib/matrix/matrix/Euler.hpp>
 #include <uORB/Subscription.hpp>
 #include <uORB/topics/battery_status.h>
 #include <uORB/topics/sensor_combined.h>
@@ -59,6 +60,7 @@
 #include <uORB/topics/vehicle_local_position.h>
 #include <uORB/topics/vehicle_status.h>
 #include <uORB/topics/vehicle_gps_position.h>
+#include <uORB/topics/vehicle_attitude.h>
 
 #include <drivers/drv_hrt.h>
 
@@ -72,6 +74,9 @@ struct s_port_subscription_data_s {
 	uORB::SubscriptionData<vehicle_gps_position_s> vehicle_gps_position_sub{ORB_ID(vehicle_gps_position)};
 	uORB::SubscriptionData<vehicle_local_position_s> vehicle_local_position_sub{ORB_ID(vehicle_local_position)};
 	uORB::SubscriptionData<vehicle_status_s> vehicle_status_sub{ORB_ID(vehicle_status)};
+	uORB::SubscriptionData<vehicle_attitude_s> vehicle_attitude_sub{ORB_ID(vehicle_attitude)};
+	uint32_t att_time_ms;
+	float pitch, roll, yaw;
 };
 
 static struct s_port_subscription_data_s *s_port_subscription_data = nullptr;
@@ -88,6 +93,8 @@ bool sPort_init()
 		return false;
 	}
 
+	s_port_subscription_data->pitch = s_port_subscription_data->roll = s_port_subscription_data->yaw = .0f;
+	s_port_subscription_data->att_time_ms = hrt_absolute_time() / 1000;
 	return true;
 }
 
@@ -99,7 +106,7 @@ void sPort_deinit()
 	}
 }
 
-void sPort_update_topics()
+void sPort_update_topics(const uint32_t now_ms)
 {
 	s_port_subscription_data->battery_status_sub.update();
 	s_port_subscription_data->sensor_combined_sub.update();
@@ -108,6 +115,16 @@ void sPort_update_topics()
 	s_port_subscription_data->vehicle_gps_position_sub.update();
 	s_port_subscription_data->vehicle_local_position_sub.update();
 	s_port_subscription_data->vehicle_status_sub.update();
+	s_port_subscription_data->vehicle_attitude_sub.update();
+	if ((now_ms - s_port_subscription_data->att_time_ms) > 200) //5Hz
+	{
+		const vehicle_attitude_s &att = s_port_subscription_data->vehicle_attitude_sub.get();
+		const matrix::Eulerf euler =  matrix::Quatf(att.q);
+		s_port_subscription_data->pitch = euler.theta();
+		s_port_subscription_data->roll = euler.phi();
+		s_port_subscription_data->yaw = euler.psi();
+		s_port_subscription_data->att_time_ms = now_ms;
+	}
 }
 
 static void update_crc(uint16_t *crc, unsigned char b)
@@ -338,4 +355,36 @@ void sPort_send_GPS_info(int uart)
 {
 	const vehicle_gps_position_s &gps = s_port_subscription_data->vehicle_gps_position_sub.get();
 	sPort_send_data(uart, FRSKY_ID_TEMP2, gps.satellites_used * 10 + gps.fix_type);
+}
+
+
+void sPort_send_HDIST(int uart)
+{
+	const vehicle_local_position_s &pos = s_port_subscription_data->vehicle_local_position_sub.get();
+	const float &x = pos.x, &y = pos.y, &z = pos.z;
+	float d = sqrtf(x * x + y * y + z * z);
+	sPort_send_data(uart, SMARTPORT_ID_HDIST, (uint32_t)d);
+}
+
+void sPort_send_PITCH(int uart)
+{
+	const float &anglef = s_port_subscription_data->pitch;
+	const int anglei = anglef * (float)(1800. / M_PI);
+	sPort_send_data(uart, SMARTPORT_ID_PITCH, -anglei);
+}
+
+void sPort_send_ROLL(int uart)
+{
+	const float &anglef = s_port_subscription_data->roll;
+	const int anglei = anglef * (float)(1800. / M_PI);
+	sPort_send_data(uart, SMARTPORT_ID_ROLL, +anglei);
+}
+
+void sPort_send_YAW(int uart)
+{
+	const float &anglef = s_port_subscription_data->yaw;
+	int anglei = anglef * (float)(1800. / M_PI);
+	if (anglei < 0)
+		anglei += 3600;
+	sPort_send_data(uart, SMARTPORT_ID_YAW, anglei);
 }

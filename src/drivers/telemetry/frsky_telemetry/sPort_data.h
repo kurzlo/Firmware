@@ -46,15 +46,49 @@
 #include <stdbool.h>
 
 /* FrSky SmartPort polling IDs captured from X4R */
-#define SMARTPORT_POLL_1    0x1B
-#define SMARTPORT_POLL_2    0x34
-#define SMARTPORT_POLL_3    0x95
-#define SMARTPORT_POLL_4    0x16
-#define SMARTPORT_POLL_5    0xB7
-#define SMARTPORT_POLL_6    0x00
-#define SMARTPORT_POLL_7    0x83
-#define SMARTPORT_POLL_8    0xBA
-#define SMARTPORT_SENSOR_ID_SP2UR     0xC6 // Sensor ID  6
+#define SMARTPORT_POLL_BATV  0x1B
+#define SMARTPORT_POLL_CUR   0x34
+#define SMARTPORT_POLL_ALT   0x95
+#define SMARTPORT_POLL_SPD   0x16
+#define SMARTPORT_POLL_FUEL  0xB7
+#define SMARTPORT_POLL_VSPD  0x00
+#define SMARTPORT_POLL_GPS   0x83
+#define SMARTPORT_POLL_NAV   0xBA
+#define SMARTPORT_POLL_SP2UR 0xC6
+#define SMARTPORT_POLL_ATT   0x53
+#define SMARTPORT_POLL_HDIST 0x98
+
+/* poll ids taken from yaapu: https://github.com/yaapu/FrskyTelemetryScript/wiki/FrSky-SPort-protocol-specs */
+/*
+#define SMARTPORT_POLL_VARIO       0x00 //Physical ID  1 - Vario2 (altimeter high precision)
+#define SMARTPORT_POLL_FLVSS       0xA1 //Physical ID  2 - FLVSS Lipo sensor (can be sent with one or two cell voltages)
+#define SMARTPORT_POLL_FAS         0x22 //Physical ID  3 - FAS-40S current sensor
+#define SMARTPORT_POLL_GPS         0x83 //Physical ID  4 - GPS / altimeter (normal precision)
+#define SMARTPORT_POLL_RPM         0xE4 //Physical ID  5 - RPM
+#define SMARTPORT_POLL_SP2UH       0x45 //Physical ID  6 - SP2UART(Host)
+#define SMARTPORT_POLL_SP2UR       0xC6 //Physical ID  7 - SPUART(Remote)
+#define SMARTPORT_POLL_x67         0x67 //Physical ID  8 -
+#define SMARTPORT_POLL_x48         0x48 //Physical ID  9 -
+#define SMARTPORT_POLL_xE9         0xE9 //Physical ID 10 -
+#define SMARTPORT_POLL_x6A         0x6A //Physical ID 11 -
+#define SMARTPORT_POLL_xCB         0xCB //Physical ID 12 -
+#define SMARTPORT_POLL_xAC         0xAC //Physical ID 13 -
+#define SMARTPORT_POLL_x0D         0x0D //Physical ID 14 -
+#define SMARTPORT_POLL_x8E         0x8E //Physical ID 15 -
+#define SMARTPORT_POLL_x2F         0x2F //Physical ID 16 -
+#define SMARTPORT_POLL_xD0         0xD0 //Physical ID 17 -
+#define SMARTPORT_POLL_x71         0x71 //Physical ID 18 -
+#define SMARTPORT_POLL_xF2         0xF2 //Physical ID 19 -
+#define SMARTPORT_POLL_x53         0x53 //Physical ID 20 -
+#define SMARTPORT_POLL_x34         0x34 //Physical ID 21 -
+#define SMARTPORT_POLL_x95         0x95 //Physical ID 22 -
+#define SMARTPORT_POLL_x16         0x16 //Physical ID 23 -
+#define SMARTPORT_POLL_ACC         0xB7 //Physical ID 24 - IMU ACC (x,y,z)
+#define SMARTPORT_POLL_x98         0x98 //Physical ID 25 -
+#define SMARTPORT_POLL_PBOX        0x39 //Physical ID 26 - Power Box
+#define SMARTPORT_POLL_TEMP        0xBA //Physical ID 27 - Temp
+#define SMARTPORT_POLL_FUEL        0x1B //Physical ID 28 - Fuel (ArduPilot/Betaflight)
+*/
 
 /* FrSky SmartPort sensor IDs. See more here: https://github.com/opentx/opentx/blob/2.2/radio/src/telemetry/frsky.h */
 #define SMARTPORT_ID_RSSI          0xf101
@@ -74,6 +108,10 @@
 #define SMARTPORT_ID_CURR          0x0200
 #define SMARTPORT_ID_VFAS          0x0210  //Volt per Cell
 #define SMARTPORT_ID_CELLS         0x0300
+#define SMARTPORT_ID_HDIST         0x0420 //distance to GPS home fix, in meters
+#define SMARTPORT_ID_PITCH         0x0430 //if frsky_pitch_roll = ON set this will be pitch degrees*10
+#define SMARTPORT_ID_ROLL          0x0440 //if frsky_pitch_roll = ON set this will be roll degrees*10
+#define SMARTPORT_ID_YAW           0x0450 //'Flight Path Vector' or 'Course over ground' in degrees*10
 #define SMARTPORT_ID_GPS_LON_LAT   0x0800
 #define SMARTPORT_ID_GPS_ALT       0x0820
 #define SMARTPORT_ID_GPS_SPD       0x0830
@@ -87,7 +125,7 @@
 // Public functions
 bool sPort_init(void);
 void sPort_deinit(void);
-void sPort_update_topics(void);
+void sPort_update_topics(const uint32_t now_ms);
 void sPort_send_data(int uart, uint16_t id, uint32_t data);
 void sPort_send_BATV(int uart);
 void sPort_send_CUR(int uart);
@@ -106,5 +144,10 @@ void sPort_send_GPS_info(int uart);
 
 void sPort_send_NAV_STATE(int uart);
 void sPort_send_GPS_FIX(int uart);
+
+void sPort_send_HDIST(int uart);
+void sPort_send_PITCH(int uart);
+void sPort_send_ROLL(int uart);
+void sPort_send_YAW(int uart);
 
 #endif /* _SPORT_TELEMETRY_H */

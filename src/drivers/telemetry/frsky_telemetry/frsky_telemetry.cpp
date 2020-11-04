@@ -409,7 +409,7 @@ static int frsky_telemetry_thread_main(int argc, char *argv[])
 		uint32_t lastGPS_ms = 0;
 		uint32_t lastNAV_STATE_ms = 0;
 		uint32_t lastGPS_FIX_ms = 0;
-
+		uint32_t lastATT = 0;
 		/* send S.port telemetry */
 		while (!thread_should_exit) {
 
@@ -457,11 +457,11 @@ static int frsky_telemetry_thread_main(int argc, char *argv[])
 			// allow a minimum of 500usec before reply
 			usleep(500);
 
-			sPort_update_topics();
+			sPort_update_topics(now_ms);
 
 			switch (sbuf[1]) {
 
-			case SMARTPORT_POLL_1:
+			case SMARTPORT_POLL_BATV:
 
 				/* report BATV at 1Hz */
 				if (now_ms - lastBATV_ms > 1000) {
@@ -474,7 +474,7 @@ static int frsky_telemetry_thread_main(int argc, char *argv[])
 				break;
 
 
-			case SMARTPORT_POLL_2:
+			case SMARTPORT_POLL_CUR:
 
 				/* report battery current at 5Hz */
 				if (now_ms - lastCUR_ms > 200) {
@@ -487,7 +487,7 @@ static int frsky_telemetry_thread_main(int argc, char *argv[])
 				break;
 
 
-			case SMARTPORT_POLL_3:
+			case SMARTPORT_POLL_ALT:
 
 				/* report altitude at 5Hz */
 				if (now_ms - lastALT_ms > 200) {
@@ -500,7 +500,7 @@ static int frsky_telemetry_thread_main(int argc, char *argv[])
 				break;
 
 
-			case SMARTPORT_POLL_4:
+			case SMARTPORT_POLL_SPD:
 
 				/* report speed at 5Hz */
 				if (now_ms - lastSPD_ms > 200) {
@@ -512,7 +512,7 @@ static int frsky_telemetry_thread_main(int argc, char *argv[])
 
 				break;
 
-			case SMARTPORT_POLL_5:
+			case SMARTPORT_POLL_FUEL:
 
 				/* report fuel at 1Hz */
 				if (now_ms - lastFUEL_ms > 1000) {
@@ -524,7 +524,7 @@ static int frsky_telemetry_thread_main(int argc, char *argv[])
 
 				break;
 
-			case SMARTPORT_POLL_6:
+			case SMARTPORT_POLL_VSPD:
 
 				/* report vertical speed at 10Hz */
 				if (now_ms - lastVSPD_ms > 100) {
@@ -542,12 +542,37 @@ static int frsky_telemetry_thread_main(int argc, char *argv[])
 
 				break;
 
-			case SMARTPORT_POLL_7:
+			case SMARTPORT_POLL_ATT:
 
-				/* report GPS data elements at 5*5Hz */
-				if (now_ms - lastGPS_ms > 100) {
+				/* report altitude at 3x5Hz */
+				if (now_ms - lastATT > 66) {
 					static int elementCount = 0;
+					switch (elementCount) {
+						case 0:
+							sPort_send_PITCH(uart);
+							elementCount++;
+							break;
+						case 1:
+							sPort_send_ROLL(uart);
+							elementCount++;
+							break;
+						case 2:
+							sPort_send_YAW(uart);
+							sentPackets += elementCount;
+							elementCount = 0;
+							break;
+					}
+					lastATT = now_ms;
+				}
 
+				break;
+
+
+			case SMARTPORT_POLL_GPS:
+
+				/* report GPS data elements at 7x5Hz*/
+				if (now_ms - lastGPS_ms > 25) {
+					static int elementCount = 0;
 					switch (elementCount) {
 
 					case 0:
@@ -576,6 +601,11 @@ static int frsky_telemetry_thread_main(int argc, char *argv[])
 						break;
 
 					case 5:
+						sPort_send_HDIST(uart);
+						elementCount++;
+						break;
+
+					case 6:
 						sPort_send_GPS_TIME(uart);
 						elementCount = 0;
 						sentPackets += elementCount;
@@ -586,7 +616,7 @@ static int frsky_telemetry_thread_main(int argc, char *argv[])
 
 			/* FALLTHROUGH */
 
-			case SMARTPORT_POLL_8:
+			case SMARTPORT_POLL_NAV:
 
 				/* report nav_state as DIY_NAVSTATE 2Hz */
 				if (now_ms - lastNAV_STATE_ms > 500) {
@@ -606,7 +636,7 @@ static int frsky_telemetry_thread_main(int argc, char *argv[])
 
 				break;
 
-			case SMARTPORT_SENSOR_ID_SP2UR: {
+			case SMARTPORT_POLL_SP2UR: {
 					static int elementCount = 0;
 
 					switch (elementCount++ % 2) {
