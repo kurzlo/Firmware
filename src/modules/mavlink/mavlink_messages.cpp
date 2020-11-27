@@ -105,6 +105,7 @@
 #include <uORB/topics/vehicle_control_mode.h>
 #include <uORB/topics/vehicle_global_position.h>
 #include <uORB/topics/vehicle_gps_position.h>
+#include <uORB/topics/satellite_info.h>
 #include <uORB/topics/vehicle_land_detected.h>
 #include <uORB/topics/vehicle_local_position.h>
 #include <uORB/topics/vehicle_local_position_setpoint.h>
@@ -1724,6 +1725,272 @@ protected:
 			//msg.dgps_age = // Age of DGPS info
 
 			mavlink_msg_gps2_raw_send_struct(_mavlink->get_channel(), &msg);
+
+			return true;
+		}
+
+		return false;
+	}
+};
+
+class MavlinkStreamGPSInput : public MavlinkStream
+{
+public:
+	const char *get_name() const override
+	{
+		return MavlinkStreamGPSInput::get_name_static();
+	}
+
+	static constexpr const char *get_name_static()
+	{
+		return "GPS_INPUT";
+	}
+
+	static constexpr uint16_t get_id_static()
+	{
+		return MAVLINK_MSG_ID_GPS_INPUT;
+	}
+
+	uint16_t get_id() override
+	{
+		return get_id_static();
+	}
+
+	static MavlinkStream *new_instance(Mavlink *mavlink)
+	{
+		return new MavlinkStreamGPSInput(mavlink);
+	}
+
+	unsigned get_size() override
+	{
+		return _gps_sub.advertised() ? MAVLINK_MSG_ID_GPS_INPUT_LEN + MAVLINK_NUM_NON_PAYLOAD_BYTES : 0;
+	}
+
+private:
+	uORB::Subscription _gps_sub{ORB_ID(vehicle_gps_position)};
+
+	/* do not allow top copying this class */
+	MavlinkStreamGPSInput(MavlinkStreamGPSInput &) = delete;
+	MavlinkStreamGPSInput &operator = (const MavlinkStreamGPSInput &) = delete;
+
+protected:
+	explicit MavlinkStreamGPSInput(Mavlink *mavlink) : MavlinkStream(mavlink)
+	{}
+
+	bool send(const hrt_abstime t) override
+	{
+		vehicle_gps_position_s gps;
+
+		if (_gps_sub.update(&gps)) {
+			mavlink_gps_input_t msg{};
+			uint16_t ignore_flags = 0;
+
+			if (gps.fix_type <= 1)
+				ignore_flags |=
+					  GPS_INPUT_IGNORE_FLAG_ALT
+					| GPS_INPUT_IGNORE_FLAG_HDOP
+					| GPS_INPUT_IGNORE_FLAG_VDOP
+					| GPS_INPUT_IGNORE_FLAG_VEL_HORIZ
+					| GPS_INPUT_IGNORE_FLAG_VEL_VERT
+					| GPS_INPUT_IGNORE_FLAG_SPEED_ACCURACY
+					| GPS_INPUT_IGNORE_FLAG_HORIZONTAL_ACCURACY
+					| GPS_INPUT_IGNORE_FLAG_VERTICAL_ACCURACY;
+
+			if (!gps.vel_ned_valid)
+				ignore_flags |=
+					  GPS_INPUT_IGNORE_FLAG_VEL_HORIZ
+					| GPS_INPUT_IGNORE_FLAG_VEL_VERT
+					| GPS_INPUT_IGNORE_FLAG_SPEED_ACCURACY;
+
+			msg.time_usec = gps.timestamp;
+			msg.time_week_ms =  (uint32_t)(gps.time_gps_usec / 1000ULL);
+			msg.lat = gps.lat;
+			msg.lon = gps.lon;
+			msg.alt = gps.alt;
+			msg.hdop = gps.hdop;
+			msg.vdop = gps.vdop;
+			msg.vn = gps.vel_n_m_s;
+			msg.ve = gps.vel_e_m_s;
+			msg.vd = gps.vel_d_m_s;
+			msg.speed_accuracy = gps.s_variance_m_s;
+			msg.horiz_accuracy = gps.eph;
+			msg.vert_accuracy = gps.epv;
+			msg.ignore_flags = ignore_flags;
+			msg.time_week = gps.gps_wkn;
+			msg.gps_id = 1;
+			msg.fix_type = gps.fix_type;
+			msg.satellites_visible = gps.satellites_used;
+			msg.yaw = (uint16_t)(gps.heading * (float32)(180./M_PI * 1e2)/*rad -> cdeg*/);
+
+			mavlink_msg_gps_input_send_struct(_mavlink->get_channel(), &msg);
+
+			return true;
+		}
+
+		return false;
+	}
+};
+
+class MavlinkStreamGPS2Input : public MavlinkStream
+{
+public:
+	const char *get_name() const override
+	{
+		return MavlinkStreamGPS2Input::get_name_static();
+	}
+
+	static constexpr const char *get_name_static()
+	{
+		return "GPS2_INPUT";
+	}
+
+	static constexpr uint16_t get_id_static()
+	{
+		return MAVLINK_MSG_ID_GPS_INPUT;
+	}
+
+	uint16_t get_id() override
+	{
+		return get_id_static();
+	}
+
+	static MavlinkStream *new_instance(Mavlink *mavlink)
+	{
+		return new MavlinkStreamGPS2Input(mavlink);
+	}
+
+	unsigned get_size() override
+	{
+		return _gps2_sub.advertised() ? MAVLINK_MSG_ID_GPS_INPUT_LEN + MAVLINK_NUM_NON_PAYLOAD_BYTES : 0;
+	}
+
+private:
+	uORB::Subscription _gps2_sub{ORB_ID(vehicle_gps_position), 1};
+
+	/* do not allow top copying this class */
+	MavlinkStreamGPS2Input(MavlinkStreamGPS2Input &) = delete;
+	MavlinkStreamGPS2Input &operator = (const MavlinkStreamGPS2Input &) = delete;
+
+protected:
+	explicit MavlinkStreamGPS2Input(Mavlink *mavlink) : MavlinkStream(mavlink)
+	{}
+
+	bool send(const hrt_abstime t) override
+	{
+		vehicle_gps_position_s gps;
+
+		if (_gps2_sub.update(&gps)) {
+			mavlink_gps_input_t msg{};
+			uint16_t ignore_flags = 0;
+
+			if (gps.fix_type <= 1)
+				ignore_flags |=
+					  GPS_INPUT_IGNORE_FLAG_ALT
+					| GPS_INPUT_IGNORE_FLAG_HDOP
+					| GPS_INPUT_IGNORE_FLAG_VDOP
+					| GPS_INPUT_IGNORE_FLAG_VEL_HORIZ
+					| GPS_INPUT_IGNORE_FLAG_VEL_VERT
+					| GPS_INPUT_IGNORE_FLAG_SPEED_ACCURACY
+					| GPS_INPUT_IGNORE_FLAG_HORIZONTAL_ACCURACY
+					| GPS_INPUT_IGNORE_FLAG_VERTICAL_ACCURACY;
+
+			if (!gps.vel_ned_valid)
+				ignore_flags |=
+					  GPS_INPUT_IGNORE_FLAG_VEL_HORIZ
+					| GPS_INPUT_IGNORE_FLAG_VEL_VERT
+					| GPS_INPUT_IGNORE_FLAG_SPEED_ACCURACY;
+
+			msg.time_usec = gps.timestamp;
+			msg.time_week_ms =  (uint32_t)(gps.time_gps_usec / 1000ULL);
+			msg.lat = gps.lat;
+			msg.lon = gps.lon;
+			msg.alt = gps.alt;
+			msg.hdop = gps.hdop;
+			msg.vdop = gps.vdop;
+			msg.vn = gps.vel_n_m_s;
+			msg.ve = gps.vel_e_m_s;
+			msg.vd = gps.vel_d_m_s;
+			msg.speed_accuracy = gps.s_variance_m_s;
+			msg.horiz_accuracy = gps.eph;
+			msg.vert_accuracy = gps.epv;
+			msg.ignore_flags = ignore_flags;
+			msg.time_week = gps.gps_wkn;
+			msg.gps_id = 2;
+			msg.fix_type = gps.fix_type;
+			msg.satellites_visible = gps.satellites_used;
+			msg.yaw = (uint16_t)(gps.heading * (float32)(180./M_PI * 1e2)/*rad -> cdeg*/);
+
+			mavlink_msg_gps_input_send_struct(_mavlink->get_channel(), &msg);
+
+			return true;
+		}
+
+		return false;
+	}
+};
+
+class MavlinkStreamGPSStatus : public MavlinkStream
+{
+public:
+	const char *get_name() const override
+	{
+		return MavlinkStreamGPSStatus::get_name_static();
+	}
+
+	static constexpr const char *get_name_static()
+	{
+		return "GPS_STATUS";
+	}
+
+	static constexpr uint16_t get_id_static()
+	{
+		return MAVLINK_MSG_ID_GPS_STATUS;
+	}
+
+	uint16_t get_id() override
+	{
+		return get_id_static();
+	}
+
+	static MavlinkStream *new_instance(Mavlink *mavlink)
+	{
+		return new MavlinkStreamGPSStatus(mavlink);
+	}
+
+	unsigned get_size() override
+	{
+		return _svinfo_sub.advertised() ? MAVLINK_MSG_ID_GPS_STATUS_LEN + MAVLINK_NUM_NON_PAYLOAD_BYTES : 0;
+	}
+
+private:
+	uORB::Subscription _svinfo_sub{ORB_ID(satellite_info)};
+
+	/* do not allow top copying this class */
+	MavlinkStreamGPSStatus(MavlinkStreamGPSInput &) = delete;
+	MavlinkStreamGPSStatus &operator = (const MavlinkStreamGPSStatus &) = delete;
+
+protected:
+	explicit MavlinkStreamGPSStatus(Mavlink *mavlink) : MavlinkStream(mavlink)
+	{}
+
+	bool send(const hrt_abstime t) override
+	{
+		satellite_info_s svinfo;
+
+		if (_svinfo_sub.update(&svinfo)) {
+			mavlink_gps_status_t msg;
+			unsigned i;
+			for (i = 0; (i < (unsigned)(sizeof(svinfo.svid)/sizeof(*svinfo.svid))) && (i < (unsigned)(sizeof(msg.satellite_prn)/sizeof(*msg.satellite_prn))); i++)
+			{
+				msg.satellite_prn[i] = svinfo.svid[i];
+				msg.satellite_used[i] = svinfo.used[i];
+				msg.satellite_elevation[i] = svinfo.elevation[i];
+				msg.satellite_azimuth[i] = svinfo.azimuth[i];
+				msg.satellite_snr[i] = svinfo.snr[i];
+			}
+			msg.satellites_visible = i < svinfo.count ? i : svinfo.count;
+
+			mavlink_msg_gps_status_send_struct(_mavlink->get_channel(), &msg);
 
 			return true;
 		}
@@ -5261,6 +5528,9 @@ static const StreamListItem streams_list[] = {
 	create_stream_list_item<MavlinkStreamVFRHUD>(),
 	create_stream_list_item<MavlinkStreamGPSRawInt>(),
 	create_stream_list_item<MavlinkStreamGPS2Raw>(),
+	create_stream_list_item<MavlinkStreamGPSInput>(),
+	create_stream_list_item<MavlinkStreamGPS2Input>(),
+	create_stream_list_item<MavlinkStreamGPSStatus>(),
 	create_stream_list_item<MavlinkStreamSystemTime>(),
 	create_stream_list_item<MavlinkStreamTimesync>(),
 	create_stream_list_item<MavlinkStreamGlobalPositionInt>(),

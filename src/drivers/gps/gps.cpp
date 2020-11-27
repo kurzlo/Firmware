@@ -898,6 +898,9 @@ GPS::print_status()
 		}
 
 		print_message(_report_gps_pos);
+		if (_p_report_sat_info != nullptr) {
+			print_message(*_p_report_sat_info);
+		}
 	}
 
 	if (_instance == Instance::Main && _secondary_instance) {
